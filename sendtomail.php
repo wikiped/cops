@@ -1,25 +1,43 @@
 <?php
 
-require_once ("config.php");
-require_once "resources/PHPMailer/class.phpmailer.php";
-require_once "book.php";
+require_once dirname(__FILE__) . '/config.php';
+require_once dirname(__FILE__) . '/base.php';
 
-if (is_null ($config['cops_mail_configuration']) ||
-    !is_array ($config['cops_mail_configuration']) ||
-    empty ($config['cops_mail_configuration']["smtp.host"]) ||
-    empty ($config['cops_mail_configuration']["address.from"])) {
-    echo "NOK. bad configuration of $config ['cops_mail_configuration']";
+function checkConfiguration () {
+    global $config;
+
+    if (is_null ($config['cops_mail_configuration']) ||
+        !is_array ($config['cops_mail_configuration']) ||
+        empty ($config['cops_mail_configuration']["smtp.host"]) ||
+        empty ($config['cops_mail_configuration']["address.from"])) {
+        return "NOK. bad configuration.";
+    }
+    return False;
+}
+
+function checkRequest ($idData, $emailDest) {
+    if (empty ($idData)) {
+        return 'No data sent.';
+    }
+    if (empty ($emailDest)) {
+        return 'No email sent.';
+    }
+    return False;
+}
+
+if (php_sapi_name() === 'cli') { return; }
+
+global $config;
+
+if ($error = checkConfiguration ()) {
+    echo $error;
     exit;
 }
 
 $idData = $_REQUEST["data"];
-if (empty ($idData)) {
-    echo 'No data sent.';
-    exit;
-}
 $emailDest = $_REQUEST["email"];
-if (empty ($emailDest)) {
-    echo 'No email sent.';
+if ($error = checkRequest ($idData, $emailDest)) {
+    echo $error;
     exit;
 }
 
@@ -27,7 +45,7 @@ $book = Book::getBookByDataId($idData);
 $data = $book->getDataById ($idData);
 
 if (filesize ($data->getLocalPath ()) > 10 * 1024 * 1024) {
-    echo 'Attachement too big';
+    echo 'Attachment too big';
     exit;
 }
 
@@ -44,6 +62,7 @@ $mail->SMTPAuth = !empty ($config['cops_mail_configuration']["smtp.username"]);
 if (!empty ($config['cops_mail_configuration']["smtp.username"])) $mail->Username = $config['cops_mail_configuration']["smtp.username"];
 if (!empty ($config['cops_mail_configuration']["smtp.password"])) $mail->Password = $config['cops_mail_configuration']["smtp.password"];
 if (!empty ($config['cops_mail_configuration']["smtp.secure"])) $mail->SMTPSecure = $config['cops_mail_configuration']["smtp.secure"];
+if (!empty ($config['cops_mail_configuration']["smtp.port"])) $mail->Port = $config['cops_mail_configuration']["smtp.port"];
 
 $mail->From = $config['cops_mail_configuration']["address.from"];
 $mail->FromName = $config['cops_title_default'];
@@ -55,11 +74,17 @@ foreach (explode (";", $emailDest) as $emailAddress) {
 
 $mail->AddAttachment($data->getLocalPath ());
 
-$mail->IsHTML(false); 
-$mail->Subject = 'Sent by COPS';
-$mail->Body    = 'Sent by COPS';
+$mail->IsHTML(true);
+$mail->CharSet = "UTF-8";
+$mail->Subject = 'Sent by COPS : ';
+if (!empty ($config['cops_mail_configuration']["subject"])) {
+    $mail->Subject = $config['cops_mail_configuration']["subject"];
+}
+$mail->Subject .= $data->getUpdatedFilename ();
+$mail->Body    = "<h1>" . $book->title . "</h1><h2>" . $book->getAuthorsName () . "</h2>" . $book->getComment ();
+$mail->AltBody = "Sent by COPS";
 
-if(!$mail->Send()) {
+if (!$mail->Send()) {
    echo localize ("mail.messagenotsent");
    echo 'Mailer Error: ' . $mail->ErrorInfo;
    exit;

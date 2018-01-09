@@ -1,6 +1,8 @@
+DirectoryIndex index.php
+
 <IfModule mod_xsendfile.c>
 <Files fetch.php>
-	XSendFile on
+    XSendFile on
 </Files>
 </IfModule>
 
@@ -13,9 +15,16 @@
 
 ###########################################
 # On WAMP one user had to add this line in his httpd.conf
-# None of the abose was working
+# None of the above was working
 ###########################################
 #XSendFilePath <YourCalibrePath>
+
+###########################################
+# If you want to use user based configuration with
+# apache 2.4 + php-fpm enable this
+# https://github.com/seblucas/cops/issues/213
+###########################################
+#SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
 
 <IfModule mod_rewrite.c>
 RewriteEngine on
@@ -53,11 +62,16 @@ ExpiresByType application/vnd.ms-fontobject "access plus 1 month"
 ExpiresByType text/css "access plus 1 year"
 ExpiresByType application/javascript "access plus 1 year"
 ExpiresByType text/javascript "access plus 1 year"
-   
 </IfModule>
 
 ###########################################
 # Uncomment if you wish to protect access with a password
+###########################################
+# If your covers and books are not available as soon as you protect it
+# You can try replacing the FilesMatch directive by this one
+# <FilesMatch "(index|feed)\.php">
+# it helps for Sony PRS-TX and Aldiko, but beware fetch.php can be accessed
+# without authentication (see $config ['cops_fetch_protect'] for a workaround).
 ###########################################
 #<FilesMatch "\.php$">
 #AuthUserFile /path/to/file

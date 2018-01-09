@@ -2,19 +2,41 @@
 // copyright Sébastien Lucas
 // https://github.com/seblucas/cops
 
-/*jshint curly: true, latedef: true, trailing: true, noarg: true, undef: true, browser: true, jquery: true, unused: true, devel: true */
-/*global LRUCache */
+/*jshint curly: true, latedef: true, trailing: true, noarg: true, undef: true, browser: true, jquery: true, unused: true, devel: true, loopfunc: true */
+/*global LRUCache, doT, Bloodhound, postRefresh */
 
 var templatePage, templateBookDetail, templateMain, templateSuggestion, currentData, before, filterList;
 
 if (typeof LRUCache != 'undefined') {
-    var cache = new LRUCache(30);
+    console.log('ERROR: LRUCache module not loaded!');
 }
+var cache = new LRUCache(30);
+
+$.ajaxSetup({
+    cache: false
+});
+
+var copsTypeahead = new Bloodhound({
+    datumTokenizer: Bloodhound.tokenizers.obj.whitespace('title'),
+    queryTokenizer: Bloodhound.tokenizers.whitespace,
+    limit: 30,
+    remote: {
+                url: 'getJSON.php?page=9&search=1&db=%DB&query=%QUERY',
+                replace: function (url, query) {
+                    if (currentData.multipleDatabase === 1 && currentData.databaseId === "") {
+                        return url.replace('%QUERY', query).replace('&db=%DB', "");
+                    }
+                    return url.replace('%QUERY', query).replace('%DB', currentData.databaseId);
+                }
+            }
+});
+
+copsTypeahead.initialize();
 
 var DEBUG = false;
 var isPushStateEnabled = window.history && window.history.pushState && window.history.replaceState &&
   // pushState isn't reliable on iOS until 5.
-  !navigator.userAgent.match(/((iPod|iPhone|iPad).+\bOS\s+[1-4]|WebApps\/.+CFNetwork)/);
+  !window.navigator.userAgent.match(/((iPod|iPhone|iPad).+\bOS\s+[1-4]|WebApps\/.+CFNetwork)/);
 
 function debug_log(text) {
     if ( DEBUG ) {
@@ -52,6 +74,19 @@ function updateCookieFromCheckbox (id) {
     }
 }
 
+/*exported updateCookieFromCheckboxGroup */
+function updateCookieFromCheckboxGroup (id) {
+    var name = $(id).attr('name');
+    var idBase = name.replace (/\[\]/, "");
+    var group = [];
+    $(':checkbox[name="' + name + '"]:checked').each (function () {
+        var id = $(this).attr("id");
+        group.push (id.replace (idBase + "_", ""));
+    });
+    $.cookie(idBase, group.join (), { expires: 365 });
+}
+
+
 function elapsed () {
     var elapsedTime = new Date () - before;
     return "Elapsed : " + elapsedTime;
@@ -67,6 +102,10 @@ function sendToMailAddress (component, dataid) {
     var email = $.cookie ('email');
     if (!$.cookie ('email')) {
         email = window.prompt (currentData.c.i18n.customizeEmail, "");
+        if (email === null)
+        {
+            return;
+        }
         $.cookie ('email', email, { expires: 365 });
     }
     var url = 'sendtomail.php';
@@ -87,8 +126,7 @@ function str_format () {
 }
 
 function isDefined(x) {
-    var undefinedVar;
-    return x !== undefinedVar;
+    return (typeof x !== 'undefined');
 }
 
 function getCurrentOption (option) {
@@ -123,6 +161,9 @@ function getTagList () {
 
         var tagarray = taglist.split (",");
         for (var i in tagarray) {
+            if (!tagarray.hasOwnProperty(i)) {
+                continue;
+            }
             var tag = tagarray [i].replace(/^\s+/g,'').replace(/\s+$/g,'');
             tagList [tag] = 1;
         }
@@ -132,7 +173,7 @@ function getTagList () {
 
 function updateFilters () {
     var tagList = getTagList ();
-    
+
     // If there is already some filters then let's prepare to update the list
     $("#filter ul li").each (function () {
         var text = $(this).text ();
@@ -142,20 +183,23 @@ function updateFilters () {
             tagList [text] = -1;
         }
     });
-    
+
     // Update the filter -1 to remove, 1 to add, 0 already there
     for (var tag in tagList) {
+        if (!tagList.hasOwnProperty(tag)) {
+            continue;
+        }
         var tagValue = tagList [tag];
         if (tagValue === -1) {
-            $("#filter ul li:contains('" + tag + "')").remove();
+            $("#filter ul li").filter (function () { return $.text([this]) === tag; }).remove();
         }
         if (tagValue === 1) {
             $("#filter ul").append ("<li>" + tag + "</li>");
         }
     }
-    
+
     $("#filter ul").append ("<li>_CLEAR_</li>");
-    
+
     // Sort the list alphabetically
     $('#filter ul li').sortElements(function(a, b){
         return $(a).text() > $(b).text() ? 1 : -1;
@@ -168,11 +212,14 @@ function doFilter () {
         updateFilters ();
         return;
     }
-    
+
     $(".se").each (function(){
         var taglist = ", " + $(this).text() + ", ";
         var toBeFiltered = false;
         for (var filter in filterList) {
+            if (!filterList.hasOwnProperty(filter)) {
+                continue;
+            }
             var onlyThisTag = filterList [filter];
             filter = ', ' + filter + ', ';
             var myreg = new RegExp (filter);
@@ -188,6 +235,21 @@ function doFilter () {
         }
         if (toBeFiltered) { $(this).parents (".books").addClass ("filtered"); }
     });
+
+    // Handle the books with no tags
+    var atLeastOneTagSelected = false;
+    for (var filter in filterList) {
+        if (!filterList.hasOwnProperty(filter)) {
+            continue;
+        }
+        if (filterList[filter] === true) {
+            atLeastOneTagSelected = true;
+        }
+    }
+    if (atLeastOneTagSelected) {
+        $(".books").not (":has(span.se)").addClass ("filtered");
+    }
+
     updateFilters ();
 }
 
@@ -244,9 +306,9 @@ updatePage = function (data) {
     document.title = data.title;
     currentData = data;
     setTimeout( function() { $("input[name=query]").focus(); }, 500 );
-    
+
     debug_log (elapsed ());
-    
+
     if ($.cookie('toolbar') === '1') { $("#tool").show (); }
     if (currentData.containsBook === 1) {
         $("#sortForm").show ();
@@ -258,27 +320,31 @@ updatePage = function (data) {
     } else {
         $("#sortForm").hide ();
     }
-    
-    $('input[name=query]').typeahead([
+
+    $('input[name=query]').typeahead(
+    {
+        hint: true,
+        minLength : 3
+    },
     {
         name: 'search',
-        allowDuplicates: true,
-        minLength : 3,
-        valueKey: 'title',
-        limit: 24,
-        template: templateSuggestion,
-        remote: {
-            url: 'getJSON.php?search=1&db=%DB&query=%QUERY',
-            replace: function (url, query) {
-                return url.replace('%QUERY', query).replace('%DB', currentData.databaseId);
-            }
-        }
-    }
-    ]);
-    
-    $('input[name=query]').bind('typeahead:selected', function(obj, datum) {
-        navigateTo (datum.navlink);
+        displayKey: 'title',
+        templates: {
+            suggestion: templateSuggestion
+        },
+        source: copsTypeahead.ttAdapter()
     });
+
+    $('input[name=query]').bind('typeahead:selected', function(obj, datum) {
+        if (isPushStateEnabled) {
+            navigateTo (datum.navlink);
+        } else {
+            window.location = datum.navlink;
+        }
+    });
+
+    if(typeof postRefresh == 'function')
+    { postRefresh(); }
 };
 
 navigateTo = function (url) {
@@ -287,11 +353,11 @@ navigateTo = function (url) {
     var jsonurl = url.replace ("index", "getJSON");
     var cachedData = cache.get (jsonurl);
     if (cachedData) {
-        history.pushState(jsonurl, "", url);
+        window.history.pushState(jsonurl, "", url);
         updatePage (cachedData);
     } else {
         $.getJSON(jsonurl, function(data) {
-            history.pushState(jsonurl, "", url);
+            window.history.pushState(jsonurl, "", url);
             cache.put (jsonurl, data);
             updatePage (data);
         });
@@ -306,12 +372,12 @@ function link_Clicked (event) {
     }
     event.preventDefault();
     var url = currentLink.attr('href');
-    
+
     if ($(".mfp-ready").length)
     {
         $.magnificPopup.close();
     }
-    
+
     // The bookdetail / about should be displayed in a lightbox
     if (getCurrentOption ("use_fancyapps") === "1" &&
         (currentLink.hasClass ("fancydetail") || currentLink.hasClass ("fancyabout"))) {
@@ -344,7 +410,7 @@ function search_Submitted (event) {
         return;
     }
     event.preventDefault();
-    var url = str_format ("index.php?page=9&current={0}&query={1}&db={2}", currentData.page, $("input[name=query]").val (), currentData.databaseId);
+    var url = str_format ("index.php?page=9&current={0}&query={1}&db={2}", currentData.page, encodeURIComponent ($("input[name=query]").val ()), currentData.databaseId);
     navigateTo (url);
 }
 
@@ -362,7 +428,7 @@ function handleLinks () {
             return $(a).find ("." + $("#sortchoice").val()).text() > $(b).find ("." + $("#sortchoice").val()).text() ? test : -test;
         });
     });
-    
+
     $("body").on ("click", ".headright", function(){
         if ($("#tool").is(":hidden")) {
             $("#tool").slideDown("slow");
@@ -387,6 +453,10 @@ function handleLinks () {
 }
 
 window.onpopstate = function(event) {
+    if (!isDefined (currentData)) {
+        return;
+    }
+
     before = new Date ();
     var data = cache.get (event.state);
     updatePage (data);
@@ -400,3 +470,42 @@ $(document).keydown(function(e){
         navigateTo ($("#nextLink").attr('href'));
     }
 });
+
+/*exported initiateAjax */
+function initiateAjax (url, theme) {
+    $.when($.get('templates/' + theme + '/header.html'),
+           $.get('templates/' + theme + '/footer.html'),
+           $.get('templates/' + theme + '/bookdetail.html'),
+           $.get('templates/' + theme + '/main.html'),
+           $.get('templates/' + theme + '/page.html'),
+           $.get('templates/' + theme + '/suggestion.html'),
+           $.getJSON(url)).done(function(header, footer, bookdetail, main, page, suggestion, data){
+        templateBookDetail = doT.template (bookdetail [0]);
+
+        var defMain = {
+            bookdetail: bookdetail [0]
+        };
+
+        templateMain = doT.template (main [0], undefined, defMain);
+
+        var defPage = {
+            header: header [0],
+            footer: footer [0],
+            main  : main [0],
+            bookdetail: bookdetail [0]
+        };
+
+        templatePage = doT.template (page [0], undefined, defPage);
+
+        templateSuggestion = doT.template (suggestion [0]);
+
+        currentData = data [0];
+
+        updatePage (data [0]);
+        cache.put (url, data [0]);
+        if (isPushStateEnabled) {
+            window.history.replaceState(url, "", window.location);
+        }
+        handleLinks ();
+    });
+}

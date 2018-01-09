@@ -1,1 +1,13 @@
-config_local.php
+/feedbook/*
+/coverage/*
+/saucetest/*
+/thumbnails/*
+/vendor/
+/clover.xml
+/test/text.atom
+/*.phar
+/cops.zip
+/cops-*.zip
+/cops.sublime-*
+/config_local.php
+/config_local.*.php

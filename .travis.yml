@@ -1,13 +1,61 @@
 language: php
-php:
-  - 5.5
-  - 5.4
-  - 5.3
+dist: trusty
+
+matrix:
+  include:
+    - php: "5.4"
+    - php: "5.5"
+    - php: "5.6"
+      addons:
+        sauce_connect: true
+        hosts:
+          - cops-travis
+    - php: "7.0"
+    - php: "hhvm"
+  allow_failures:
+    - php: "hhvm"
+    - php: "5.5"
+    - php: "5.4"
+
 before_script:
-  - npm install jshint -g
+  - composer selfupdate
+  - composer global require "fxp/composer-asset-plugin:~1.1"
+  - 'if [ "${TRAVIS_PHP_VERSION}" = "5.5" ] || [ "${TRAVIS_PHP_VERSION}" = "5.4" ]; then rm composer.lock && sed -i "/platform/d" composer.json ; fi'
+  - composer install
+  - npm install -g jshint
   - jshint --version
 script:
-  - phpunit
+  - vendor/bin/phpunit
   - jshint --verbose --show-non-errors util.js
   - php test/coverage-checker.php clover.xml 45
-  
+after_success:
+  - chmod +x test/prepareSauceTest.sh
+  - test/prepareSauceTest.sh
+env:
+  global:
+  - SAUCE_USERNAME=seblucas 
+  - secure: VVxocvmz6WYr3tZSTA42M/LUhaHoBWw5onh85hnquoMaxspd3tDCyfQIowTTmEXikRh2T0CkTH7X3dhVwRTd/Ha9isja1qDo9Lc2flGCoWICF7WFZuom084+d+O+EWx4WZMAw4Lz4w6a5xflpPKnzNs9B0+de0BdTlQ5qSXVrcA=
+
+sudo: false
+
+before_deploy:
+  - composer install --no-dev --optimize-autoloader
+  - wget http://www.phing.info/get/phing-latest.phar
+  - php phing-latest.phar
+  - export RELEASE_FILE=$(ls ./cops-*.zip)
+
+deploy:
+  provider: releases
+  api_key:
+    secure: kNFtDsBbAGRgAYD7KHFMORsItciahDz88AjhpQbtFAN1Nrz4EIQA+0jpS7+5NYHsnb4LMcuH/BubopNlpoumy+IrUZ3+64D+NcK50YmK0sPhM1aAtEIDlXnivIvqFemzW2lCv9vvJjbmJFI1zcH877aBODJB81N6hA5zbSbIszA=
+  skip_cleanup: true
+  file:
+    - "${RELEASE_FILE}"
+  on:
+    tags: true
+    repo: seblucas/cops
+    php: 5.6
+
+cache:
+  directories:
+    - $HOME/.composer/cache

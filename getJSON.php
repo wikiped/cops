@@ -6,18 +6,10 @@
  * @author     Sébastien Lucas <sebastien@slucas.fr>
  *
  */
- 
-    require_once ("config.php");
-    require_once ("base.php");
-    require_once ("author.php");
-    require_once ("serie.php");
-    require_once ("tag.php");
-    require_once ("language.php");
-    require_once ("customcolumn.php");
-    require_once ("book.php");
-    
-    header ("Content-Type:application/json;charset=utf-8");
-    
-    
-    echo json_encode (getJson ());
+
+require_once('config.php');
+
+header('Content-Type:application/json;charset=utf-8');
+
+echo json_encode(JSONRenderer::getJson());
 
